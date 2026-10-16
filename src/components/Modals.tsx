@@ -97,15 +97,6 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onLogin }) => {
             />
           </div>
 
-          <div className="text-[11px] text-slate-400 bg-slate-50 p-2.5 rounded-xl border border-slate-200">
-            <span className="font-semibold block text-slate-600 mb-0.5">Akun Bawaan Sistem:</span>
-            <span>• Admin: <b>admin</b> / sandi: <b>123</b></span>
-            <br />
-            <span>• Petugas: <b>petugas</b> / sandi: <b>123</b></span>
-            <br />
-            <span>• Siswa: <b>202601</b> / sandi: <b>123</b></span>
-          </div>
-
           <button
             type="submit"
             className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-md transition cursor-pointer"
@@ -185,9 +176,12 @@ export const SuccessPresenceModal: React.FC<SuccessPresenceModalProps> = ({ data
 interface AlreadyPresentModalProps {
   data: {
     nama: string;
+    nis?: string;
     tanggal: string;
     waktu: string;
     status: string;
+    metode?: string;
+    attemptedMethod?: string;
   } | null;
   onClose: () => void;
 }
@@ -203,10 +197,12 @@ export const AlreadyPresentModal: React.FC<AlreadyPresentModalProps> = ({ data, 
         </div>
         <div>
           <span className="inline-block px-3 py-1 bg-rose-100 text-rose-800 text-xs font-extrabold rounded-full uppercase tracking-wider mb-1">
-            SUDAH PRESENSI
+            SUDAH PRESENSI HARI INI (MAKS. 1X)
           </span>
           <h3 className="text-lg font-black text-slate-800 font-brand">Anda Sudah Presensi Hari Ini</h3>
-          <p className="text-xs text-slate-500">Siswa tersebut telah terdaftar di database hari ini.</p>
+          <p className="text-xs text-rose-600 font-medium">
+            Dalam 1 hari siswa hanya dapat presensi 1 kali.
+          </p>
         </div>
 
         <div className="bg-rose-50 border border-rose-100 rounded-2xl p-4 text-left text-xs space-y-1.5">
@@ -214,6 +210,12 @@ export const AlreadyPresentModal: React.FC<AlreadyPresentModalProps> = ({ data, 
             <span className="text-slate-500">Nama Siswa:</span>
             <span className="font-bold text-rose-950">{data.nama}</span>
           </div>
+          {data.nis && (
+            <div className="flex justify-between">
+              <span className="text-slate-500">Username/NIS:</span>
+              <span className="font-mono font-bold text-slate-700">{data.nis}</span>
+            </div>
+          )}
           <div className="flex justify-between">
             <span className="text-slate-500">Tanggal:</span>
             <span className="font-bold text-slate-800">{formatTanggalIndo(data.tanggal)}</span>
@@ -222,6 +224,22 @@ export const AlreadyPresentModal: React.FC<AlreadyPresentModalProps> = ({ data, 
             <span className="text-slate-500">Tercatat Pada:</span>
             <span className="font-bold text-rose-700">{data.waktu} WIB ({data.status})</span>
           </div>
+          <div className="flex justify-between">
+            <span className="text-slate-500">Metode Presensi Awal:</span>
+            <span className="font-semibold text-indigo-900">
+              {data.metode || 'Kamera Scanner Barcode'}
+            </span>
+          </div>
+          {data.attemptedMethod && (
+            <div className="flex justify-between text-rose-800 border-t border-rose-200/60 pt-1 mt-1">
+              <span>Percobaan Melalui:</span>
+              <span className="font-bold">{data.attemptedMethod} (Ditolak)</span>
+            </div>
+          )}
+        </div>
+
+        <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-xl text-[11px] text-amber-900 text-left leading-relaxed">
+          <b>Aturan SIM Presensi:</b> Jika sudah presensi melalui Kamera Barcode tidak bisa presensi manual, begitu pula sebaliknya.
         </div>
 
         <button

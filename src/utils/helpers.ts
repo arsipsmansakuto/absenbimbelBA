@@ -58,6 +58,34 @@ export function parseIsoKeTanggalIndo(isoStr: string): string {
   return isoStr;
 }
 
+export function normalizeDateToStandard(input: string | Date | undefined | null): string {
+  if (!input) return getTodayDdMmYyyy();
+  if (input instanceof Date && !isNaN(input.getTime())) {
+    const d = String(input.getDate()).padStart(2, '0');
+    const m = String(input.getMonth() + 1).padStart(2, '0');
+    const y = input.getFullYear();
+    return `${d}/${m}/${y}`;
+  }
+  const s = String(input).trim();
+  // Match dd/mm/yyyy or d/m/yyyy or dd-mm-yyyy
+  const slashMatch = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+  if (slashMatch) {
+    const d = slashMatch[1].padStart(2, '0');
+    const m = slashMatch[2].padStart(2, '0');
+    const y = slashMatch[3];
+    return `${d}/${m}/${y}`;
+  }
+  // Match yyyy-mm-dd or yyyy/mm/dd
+  const isoMatch = s.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
+  if (isoMatch) {
+    const y = isoMatch[1];
+    const m = isoMatch[2].padStart(2, '0');
+    const d = isoMatch[3].padStart(2, '0');
+    return `${d}/${m}/${y}`;
+  }
+  return formatTanggalIndo(s);
+}
+
 export function parseNominalAngka(val: unknown): number {
   if (val === null || val === undefined) return 0;
   if (typeof val === 'number') {

@@ -22,6 +22,7 @@ import {
   getCurrentTimeHhMm,
   formatTanggalIndo,
   parseTanggalIndoKeIso,
+  normalizeDateToStandard,
   safeFileDownload,
   parseNominalAngka
 } from './utils/helpers';
@@ -147,9 +148,12 @@ export default function App() {
   } | null>(null);
   const [alreadyPresentData, setAlreadyPresentData] = useState<{
     nama: string;
+    nis?: string;
     tanggal: string;
     waktu: string;
     status: string;
+    metode?: string;
+    attemptedMethod?: string;
   } | null>(null);
   const [packageCelebrationData, setPackageCelebrationData] = useState<{
     nama: string;
@@ -417,7 +421,8 @@ export default function App() {
   const handleProcessPresensi = (
     scannedQuery: string,
     customTanggal?: string,
-    customKeterangan?: string
+    customKeterangan?: string,
+    attemptedMethod: 'Kamera Scanner Barcode' | 'Presensi Manual' = 'Kamera Scanner Barcode'
   ) => {
     if (!scannedQuery.trim()) return;
     const q = scannedQuery.trim().toLowerCase();
@@ -433,16 +438,17 @@ export default function App() {
       return;
     }
 
-    const tgl = customTanggal ? formatTanggalIndo(customTanggal) : getTodayDdMmYyyy();
+    const tgl = customTanggal ? normalizeDateToStandard(customTanggal) : getTodayDdMmYyyy();
     const tglIso = parseTanggalIndoKeIso(tgl);
 
     const targetNamaNorm = (target.nama || '').trim().toLowerCase().replace(/\s+/g, ' ');
     const targetUsername = (target.username || '').trim().toLowerCase();
 
-    // Anti-duplicate check for today
+    // Anti-duplicate cross-check for the day: 1 hari siswa hanya absen 1x!
+    // Kalau sudah presensi lewat Kamera Barcode tidak bisa presensi manual, begitu pula sebaliknya.
     const sudah = presensiList.find(p => {
-      const pIso = parseTanggalIndoKeIso(p.tanggal);
-      const matchTgl = (pIso && tglIso && pIso === tglIso) || formatTanggalIndo(p.tanggal) === tgl;
+      const pTglStandard = normalizeDateToStandard(p.tanggal);
+      const matchTgl = pTglStandard === tgl || (p.tanggal && parseTanggalIndoKeIso(p.tanggal) === tglIso);
       const pNamaNorm = (p.nama || '').trim().toLowerCase().replace(/\s+/g, ' ');
       const pNisNorm = (p.nis || '').trim().toLowerCase();
       return matchTgl && (pNamaNorm === targetNamaNorm || pNisNorm === targetUsername);
@@ -451,13 +457,20 @@ export default function App() {
     if (sudah) {
       playWarningSound();
       speakText('Anda sudah presensi hari ini');
+      const metodeAwal = sudah.metode || 'Kamera Scanner Barcode';
       setAlreadyPresentData({
         nama: target.nama,
+        nis: target.username,
         tanggal: tgl,
         waktu: sudah.waktu,
-        status: sudah.status
+        status: sudah.status,
+        metode: metodeAwal,
+        attemptedMethod: attemptedMethod
       });
-      showToast(`Peringatan: ${target.nama} sudah presensi hari ini!`, 'warning');
+      showToast(
+        `Peringatan: ${target.nama} SUDAH presensi hari ini via ${metodeAwal}! Maksimal 1x per hari.`,
+        'warning'
+      );
       return;
     }
 
@@ -499,7 +512,8 @@ export default function App() {
       nama: target.nama,
       kelas: target.kelas || '-',
       status: 'Hadir',
-      keterangan: keteranganText
+      keterangan: keteranganText,
+      metode: attemptedMethod
     };
 
     setPresensiList(prev => [newRecord, ...prev]);
@@ -516,7 +530,7 @@ export default function App() {
       });
     }
 
-    showToast(`Presensi berhasil: ${target.nama}`, 'success');
+    showToast(`Presensi berhasil (${attemptedMethod}): ${target.nama}`, 'success');
 
     // Send to Sheets in background
     sendPayloadToGoogleAppsScript(settings.apiUrl, {

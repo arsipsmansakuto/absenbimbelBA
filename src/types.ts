@@ -31,6 +31,7 @@ export interface PresensiRecord {
   kelas: string;
   status: 'Hadir' | 'Izin' | 'Sakit' | 'Alpa';
   keterangan: string;
+  metode?: 'Kamera Barcode' | 'Manual' | string;
 }
 
 export interface SppRecord {

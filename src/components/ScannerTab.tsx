@@ -11,15 +11,26 @@ import {
   CheckCircle2,
   Info,
   Clock,
-  Sparkles
+  Sparkles,
+  AlertTriangle
 } from 'lucide-react';
 import { Student, PresensiRecord } from '../types';
-import { getTodayDdMmYyyy, formatTanggalIndo, parseTanggalIndoKeIso } from '../utils/helpers';
+import {
+  getTodayDdMmYyyy,
+  formatTanggalIndo,
+  parseTanggalIndoKeIso,
+  normalizeDateToStandard
+} from '../utils/helpers';
 
 interface ScannerTabProps {
   students: Student[];
   presensiList: PresensiRecord[];
-  onProcessPresensi: (targetQuery: string, customTanggal?: string, customKeterangan?: string) => void;
+  onProcessPresensi: (
+    targetQuery: string,
+    customTanggal?: string,
+    customKeterangan?: string,
+    method?: 'Kamera Scanner Barcode' | 'Presensi Manual'
+  ) => void;
 }
 
 export const ScannerTab: React.FC<ScannerTabProps> = ({
@@ -83,6 +94,20 @@ export const ScannerTab: React.FC<ScannerTabProps> = ({
     };
   }, []);
 
+  const getStudentAttendanceToday = (student: Student | null) => {
+    if (!student) return null;
+    const tglStandard = normalizeDateToStandard(scanTanggal || getTodayDdMmYyyy());
+    const sNamaNorm = (student.nama || '').trim().toLowerCase().replace(/\s+/g, ' ');
+    const sUsername = (student.username || '').trim().toLowerCase();
+
+    return presensiList.find(p => {
+      const pTglStandard = normalizeDateToStandard(p.tanggal);
+      const pNamaNorm = (p.nama || '').trim().toLowerCase().replace(/\s+/g, ' ');
+      const pNisNorm = (p.nis || '').trim().toLowerCase();
+      return pTglStandard === tglStandard && (pNamaNorm === sNamaNorm || pNisNorm === sUsername);
+    });
+  };
+
   const startScanner = async (camId?: string) => {
     const idToUse = camId || selectedCameraId || (cameras[0] && cameras[0].id);
     if (!idToUse) return;
@@ -115,7 +140,7 @@ export const ScannerTab: React.FC<ScannerTabProps> = ({
             return;
           }
           lastScannedCodeRef.current = { code: decodedText, time: now };
-          onProcessPresensi(decodedText, scanTanggal, manualKeterangan);
+          onProcessPresensi(decodedText, undefined, undefined, 'Kamera Scanner Barcode');
         },
         () => {}
       );
@@ -161,7 +186,7 @@ export const ScannerTab: React.FC<ScannerTabProps> = ({
     const query = selectedStudent ? selectedStudent.username : manualQuery.trim();
     if (!query) return;
 
-    onProcessPresensi(query, scanTanggal, manualKeterangan);
+    onProcessPresensi(query, scanTanggal, manualKeterangan, 'Presensi Manual');
     handleClearSelectedStudent();
     setManualKeterangan('');
   };
@@ -251,8 +276,13 @@ export const ScannerTab: React.FC<ScannerTabProps> = ({
           {/* Info Banner */}
           <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-3 flex items-start gap-3 text-xs text-indigo-900">
             <Info className="w-4 h-4 text-indigo-600 flex-shrink-0 mt-0.5" />
-            <div className="leading-relaxed">
-              <span>Data presensi otomatis tersinkron realtime dengan Google Sheets di latar belakang. Dilengkapi nada lonceng, audio sambutan, pelindung anti-presensi ganda hari ini, dan perayaan paket 12 pertemuan.</span>
+            <div className="leading-relaxed space-y-1">
+              <p>
+                <b>Aturan 1 Hari 1x Presensi:</b> Siswa yang sudah presensi menggunakan <b>Kamera Scanner Barcode</b> otomatis terkunci dan tidak bisa presensi manual, begitu pula sebaliknya.
+              </p>
+              <p className="text-[11px] text-indigo-700">
+                Data presensi tersinkron realtime dengan Google Sheets. Dilengkapi nada lonceng, audio sambutan, pelindung anti-presensi ganda hari ini, dan perayaan paket 12 pertemuan.
+              </p>
             </div>
           </div>
         </div>
@@ -309,7 +339,7 @@ export const ScannerTab: React.FC<ScannerTabProps> = ({
                   <button
                     type="button"
                     onClick={handleClearSelectedStudent}
-                    className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600"
+                    className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600 cursor-pointer"
                   >
                     <X className="w-4 h-4" />
                   </button>
@@ -322,24 +352,75 @@ export const ScannerTab: React.FC<ScannerTabProps> = ({
                   {filteredStudents.length === 0 ? (
                     <div className="p-3 text-xs text-slate-400 text-center">Siswa tidak ditemukan</div>
                   ) : (
-                    filteredStudents.slice(0, 7).map(s => (
-                      <div
-                        key={s.username}
-                        onClick={() => handleSelectStudent(s)}
-                        className="p-2.5 hover:bg-indigo-50 cursor-pointer flex items-center justify-between transition"
-                      >
-                        <div>
-                          <div className="font-bold text-slate-800 text-xs">{s.nama}</div>
-                          <div className="text-[10px] text-slate-500">
-                            Username: {s.username} • Kelas: {s.kelas || '-'}
+                    filteredStudents.slice(0, 7).map(s => {
+                      const attended = getStudentAttendanceToday(s);
+                      return (
+                        <div
+                          key={s.username}
+                          onClick={() => handleSelectStudent(s)}
+                          className={`p-2.5 cursor-pointer flex items-center justify-between transition ${
+                            attended ? 'bg-rose-50/80 hover:bg-rose-100/80' : 'hover:bg-indigo-50'
+                          }`}
+                        >
+                          <div>
+                            <div className="font-bold text-slate-800 text-xs flex items-center gap-1.5 flex-wrap">
+                              <span>{s.nama}</span>
+                              {attended && (
+                                <span className="text-[9px] bg-rose-100 text-rose-700 font-extrabold px-1.5 py-0.5 rounded border border-rose-200">
+                                  Sudah Hadir ({attended.waktu} WIB)
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-[10px] text-slate-500">
+                              Username: {s.username} • Kelas: {s.kelas || '-'}
+                            </div>
+                          </div>
+                          <span className="text-[9px] bg-indigo-100 text-indigo-700 font-bold px-2 py-0.5 rounded-full uppercase">
+                            {s.kategori_bimbingan || 'BIMBEL'}
+                          </span>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              )}
+
+              {/* Status Peringatan Jika Siswa Terpilih Sudah Presensi Hari Ini */}
+              {selectedStudent && (
+                <div className="mt-2 space-y-2">
+                  <div className="p-2.5 bg-indigo-50 border border-indigo-200 rounded-xl flex items-center justify-between text-xs">
+                    <div>
+                      <div className="font-bold text-indigo-950">{selectedStudent.nama}</div>
+                      <div className="text-[10px] text-indigo-800">
+                        Username: {selectedStudent.username} • Kelas: {selectedStudent.kelas || '-'}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleClearSelectedStudent}
+                      className="text-indigo-400 hover:text-indigo-700 p-1 cursor-pointer"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  {(() => {
+                    const attendedRecord = getStudentAttendanceToday(selectedStudent);
+                    if (attendedRecord) {
+                      return (
+                        <div className="p-2.5 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800 flex items-start gap-2">
+                          <AlertTriangle className="w-4 h-4 text-rose-600 flex-shrink-0 mt-0.5" />
+                          <div className="leading-tight">
+                            <div className="font-bold text-rose-950">Siswa Sudah Presensi Hari Ini!</div>
+                            <div className="text-[11px] text-rose-700 mt-0.5">
+                              Tercatat pada {attendedRecord.waktu} WIB via <b>{attendedRecord.metode || 'Kamera Scanner Barcode'}</b>. Siswa hanya dapat absen 1x sehari.
+                            </div>
                           </div>
                         </div>
-                        <span className="text-[9px] bg-indigo-100 text-indigo-700 font-bold px-2 py-0.5 rounded-full uppercase">
-                          {s.kategori_bimbingan || 'BIMBEL'}
-                        </span>
-                      </div>
-                    ))
-                  )}
+                      );
+                    }
+                    return null;
+                  })()}
                 </div>
               )}
             </div>
@@ -406,6 +487,7 @@ export const ScannerTab: React.FC<ScannerTabProps> = ({
                 <th className="py-2.5 px-3">Username / ID</th>
                 <th className="py-2.5 px-3">Nama Siswa</th>
                 <th className="py-2.5 px-3">Kelas</th>
+                <th className="py-2.5 px-3">Metode</th>
                 <th className="py-2.5 px-3">Status</th>
                 <th className="py-2.5 px-3">Keterangan / Paket</th>
               </tr>
@@ -413,38 +495,52 @@ export const ScannerTab: React.FC<ScannerTabProps> = ({
             <tbody className="divide-y divide-slate-100">
               {todayPresensi.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-8 text-center text-slate-400">
+                  <td colSpan={8} className="py-8 text-center text-slate-400">
                     Belum ada presensi yang tercatat hari ini ({todayStr}).
                   </td>
                 </tr>
               ) : (
-                todayPresensi.map(p => (
-                  <tr key={p.id} className="hover:bg-slate-50 transition">
-                    <td className="py-2.5 px-3 font-mono text-slate-600 flex items-center gap-1.5">
-                      <Clock className="w-3 h-3 text-slate-400" />
-                      <span>{p.waktu}</span>
-                    </td>
-                    <td className="py-2.5 px-3 font-semibold text-slate-800">{formatTanggalIndo(p.tanggal)}</td>
-                    <td className="py-2.5 px-3 font-mono text-slate-500">{p.nis}</td>
-                    <td className="py-2.5 px-3 font-bold text-slate-800">{p.nama}</td>
-                    <td className="py-2.5 px-3 text-slate-600">{p.kelas || '-'}</td>
-                    <td className="py-2.5 px-3">
-                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-100 text-emerald-800">
-                        {p.status}
-                      </span>
-                    </td>
-                    <td className="py-2.5 px-3 text-slate-600">
-                      {p.keterangan && p.keterangan.includes('Paket') ? (
-                        <span className="inline-flex items-center gap-1 text-amber-700 font-bold bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200">
-                          <Sparkles className="w-3 h-3 text-amber-500" />
-                          <span>{p.keterangan}</span>
+                todayPresensi.map(p => {
+                  const isManual = p.metode === 'Presensi Manual' || p.metode === 'Manual';
+                  return (
+                    <tr key={p.id} className="hover:bg-slate-50 transition">
+                      <td className="py-2.5 px-3 font-mono text-slate-600 flex items-center gap-1.5">
+                        <Clock className="w-3 h-3 text-slate-400" />
+                        <span>{p.waktu}</span>
+                      </td>
+                      <td className="py-2.5 px-3 font-semibold text-slate-800">{formatTanggalIndo(p.tanggal)}</td>
+                      <td className="py-2.5 px-3 font-mono text-slate-500">{p.nis}</td>
+                      <td className="py-2.5 px-3 font-bold text-slate-800">{p.nama}</td>
+                      <td className="py-2.5 px-3 text-slate-600">{p.kelas || '-'}</td>
+                      <td className="py-2.5 px-3">
+                        <span
+                          className={`px-2 py-0.5 rounded-md text-[9px] font-bold ${
+                            isManual
+                              ? 'bg-slate-100 text-slate-700 border border-slate-200'
+                              : 'bg-indigo-50 text-indigo-700 border border-indigo-200'
+                          }`}
+                        >
+                          {p.metode || 'Kamera Barcode'}
                         </span>
-                      ) : (
-                        p.keterangan || '-'
-                      )}
-                    </td>
-                  </tr>
-                ))
+                      </td>
+                      <td className="py-2.5 px-3">
+                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-100 text-emerald-800">
+                          {p.status}
+                        </span>
+                      </td>
+                      <td className="py-2.5 px-3 text-slate-600">
+                        {p.keterangan && p.keterangan.includes('Paket') ? (
+                          <span className="inline-flex items-center gap-1 text-amber-700 font-bold bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200">
+                            <Sparkles className="w-3 h-3 text-amber-500" />
+                            <span>{p.keterangan}</span>
+                          </span>
+                        ) : (
+                          p.keterangan || '-'
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
