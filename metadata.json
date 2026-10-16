@@ -1,0 +1,10 @@
+{
+  "name": "SIM Presensi & SPP - BIMBEL BA v3.2",
+  "description": "Sistem Informasi Manajemen Presensi Barcode & Pembayaran SPP Terpadu dengan Sinkronisasi Google Sheets, Rekap 12 Pertemuan, Kuitansi, dan Portal Siswa Mandiri.",
+  "requestFramePermissions": [
+    "camera"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

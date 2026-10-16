@@ -1,0 +1,82 @@
+@import "tailwindcss";
+
+@layer base {
+  body {
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  }
+}
+
+.font-brand {
+  font-family: 'Outfit', system-ui, -apple-system, sans-serif;
+}
+
+.font-mono {
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+@keyframes scanLaserLine {
+  0% { top: 6%; opacity: 0.8; }
+  50% { top: 92%; opacity: 1; }
+  100% { top: 6%; opacity: 0.8; }
+}
+
+.laser-line-animated {
+  position: absolute;
+  left: 3%;
+  right: 3%;
+  height: 3px;
+  background: linear-gradient(90deg, rgba(239, 68, 68, 0.2) 0%, #ef4444 50%, rgba(239, 68, 68, 0.2) 100%);
+  box-shadow: 0 0 16px 4px rgba(239, 68, 68, 0.9);
+  animation: scanLaserLine 2.2s ease-in-out infinite;
+  z-index: 30;
+}
+
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 8mm 6mm;
+  }
+  
+  html, body {
+    background: white !important;
+    color: black !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  body * {
+    visibility: hidden;
+  }
+  
+  #printArea, #printArea * {
+    visibility: visible;
+  }
+  
+  #printArea {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: white !important;
+  }
+
+  .print-page-break {
+    page-break-after: always;
+    break-after: page;
+  }
+
+  .card-print-item {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+}
