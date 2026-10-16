@@ -19,6 +19,7 @@ import {
   getTodayDdMmYyyy,
   formatTanggalIndo,
   parseTanggalIndoKeIso,
+  parseIsoKeTanggalIndo,
   normalizeDateToStandard
 } from '../utils/helpers';
 
@@ -303,15 +304,26 @@ export const ScannerTab: React.FC<ScannerTabProps> = ({
               <label className="block text-xs font-semibold text-slate-700 mb-1">
                 Tanggal Presensi (dd/mm/yyyy)
               </label>
-              <div className="relative">
+              <div className="relative flex items-center">
                 <input
                   type="text"
                   value={scanTanggal}
                   onChange={e => setScanTanggal(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 font-medium focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl pl-3.5 pr-10 py-2.5 text-xs text-slate-800 font-medium focus:ring-2 focus:ring-indigo-500 focus:outline-none"
                   placeholder="dd/mm/yyyy"
                 />
-                <Calendar className="w-4 h-4 absolute right-3.5 top-3 text-slate-400 pointer-events-none" />
+                <input
+                  type="date"
+                  value={parseTanggalIndoKeIso(scanTanggal)}
+                  onChange={e => {
+                    if (e.target.value) {
+                      setScanTanggal(parseIsoKeTanggalIndo(e.target.value));
+                    }
+                  }}
+                  className="absolute right-2 opacity-0 w-8 h-8 cursor-pointer z-10"
+                  title="Pilih tanggal di kalender"
+                />
+                <Calendar className="w-4 h-4 absolute right-3.5 text-slate-400 pointer-events-none" />
               </div>
             </div>
 

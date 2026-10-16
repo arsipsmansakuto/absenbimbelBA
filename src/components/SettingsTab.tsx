@@ -49,7 +49,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
     setIsLocked(true);
   };
 
-  const spreadsheetUrl = `https://docs.google.com/spreadsheets/d/${formData.spreadsheetId || '1oQMV5G7fiLOxTXlENGAEHEBEs2TaC5tqA8P7b-rdmjo'}/edit?gid=${formData.sheetGidSiswa || '526265062'}`;
+  const spreadsheetUrl = `https://docs.google.com/spreadsheets/d/${formData.spreadsheetId || '1oQMV5G7fiLOxTXlENGAEHEBEs2TaC5tqA8P7b-rdmjo'}/edit?gid=${formData.sheetGidSiswa || '1709630193'}`;
 
   return (
     <div className="space-y-6">
@@ -189,7 +189,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                 readOnly={isLocked}
                 value={formData.sheetGidSiswa}
                 onChange={e => setFormData({ ...formData, sheetGidSiswa: e.target.value })}
-                placeholder="Contoh: 526265062"
+                placeholder="Contoh: 1709630193"
                 className={`w-full border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-800 font-mono transition ${
                   isLocked ? 'bg-slate-100 cursor-not-allowed' : 'bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500'
                 }`}

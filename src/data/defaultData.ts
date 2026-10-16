@@ -1,7 +1,7 @@
 import { Student, PresensiRecord, SppRecord, UserAccount, GlobalSettings } from '../types';
 
 export const MASTER_SPREADSHEET_ID = '1oQMV5G7fiLOxTXlENGAEHEBEs2TaC5tqA8P7b-rdmjo';
-export const MASTER_GID_SISWA = '526265062';
+export const MASTER_GID_SISWA = '1709630193';
 export const APP_VERSION = '3.2.0';
 
 export const DEFAULT_USERS: UserAccount[] = [

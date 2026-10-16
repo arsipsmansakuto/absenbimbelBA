@@ -15,7 +15,9 @@ import {
   DEFAULT_SISWA,
   DEFAULT_PRESENSI,
   DEFAULT_SPP,
-  DEFAULT_SETTINGS
+  DEFAULT_SETTINGS,
+  MASTER_SPREADSHEET_ID,
+  MASTER_GID_SISWA
 } from './data/defaultData';
 import {
   getTodayDdMmYyyy,
@@ -79,10 +81,15 @@ export default function App() {
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed.siswa) && parsed.siswa.length > 0) return parsed.siswa;
+        if (Array.isArray(parsed.siswa) && parsed.siswa.length > 0) {
+          if (parsed.siswa[0]?.username === '202601' && parsed.siswa.length <= 3) {
+            return [];
+          }
+          return parsed.siswa;
+        }
       }
     } catch {}
-    return DEFAULT_SISWA;
+    return [];
   });
 
   const [presensiList, setPresensiList] = useState<PresensiRecord[]>(() => {
@@ -122,10 +129,22 @@ export default function App() {
     try {
       const saved = localStorage.getItem(SETTINGS_KEY);
       if (saved) {
-        return { ...DEFAULT_SETTINGS, ...JSON.parse(saved) };
+        const parsed = JSON.parse(saved);
+        return {
+          ...DEFAULT_SETTINGS,
+          ...parsed,
+          spreadsheetId: MASTER_SPREADSHEET_ID,
+          sheetGidSiswa: MASTER_GID_SISWA,
+          isConfigLocked: true
+        };
       }
     } catch {}
-    return DEFAULT_SETTINGS;
+    return {
+      ...DEFAULT_SETTINGS,
+      spreadsheetId: MASTER_SPREADSHEET_ID,
+      sheetGidSiswa: MASTER_GID_SISWA,
+      isConfigLocked: true
+    };
   });
 
   // Current session & active UI tab
@@ -186,6 +205,7 @@ export default function App() {
 
   const [isScriptModalOpen, setIsScriptModalOpen] = useState(false);
   const [isPrintAllA4Open, setIsPrintAllA4Open] = useState(false);
+  const [loginModalKey, setLoginModalKey] = useState(0);
 
   // Idle Timer Ref
   const idleTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -207,6 +227,24 @@ export default function App() {
       type
     };
     setSyncLogs(prev => [item, ...prev.slice(0, 40)]);
+  }, []);
+
+  // Load settings from server for cross-device synchronization (Tetap sama walaupun di perangkat berbeda)
+  useEffect(() => {
+    fetch('/api/settings')
+      .then(res => res.json())
+      .then(data => {
+        if (data && data.settings) {
+          setSettings(prev => ({
+            ...prev,
+            ...data.settings,
+            spreadsheetId: data.settings.spreadsheetId || MASTER_SPREADSHEET_ID,
+            sheetGidSiswa: data.settings.sheetGidSiswa || MASTER_GID_SISWA,
+            isConfigLocked: data.settings.isConfigLocked ?? true
+          }));
+        }
+      })
+      .catch(() => {});
   }, []);
 
   // Save to LocalStorage
@@ -267,20 +305,20 @@ export default function App() {
       setSyncStatus('syncing');
 
       try {
-        // 1. Siswa
-        if (settings.sheetGidSiswa) {
-          const csvSiswa = await fetchCsvFromGoogleSheet(settings.spreadsheetId, settings.sheetGidSiswa);
-          if (csvSiswa) {
-            const parsed = parseSiswaCSV(csvSiswa);
-            if (parsed.length > 0) {
-              setStudents(prev => {
-                if (JSON.stringify(prev) !== JSON.stringify(parsed)) {
-                  addSyncLog(`Data siswa disinkronkan (${parsed.length} siswa).`, 'success');
-                  return parsed;
-                }
-                return prev;
-              });
-            }
+        // 1. Siswa (Google Spreadsheet Tab Siswa gid=1709630193)
+        const spreadsheetId = settings.spreadsheetId || MASTER_SPREADSHEET_ID;
+        const gidSiswa = settings.sheetGidSiswa || MASTER_GID_SISWA;
+        const csvSiswa = await fetchCsvFromGoogleSheet(spreadsheetId, gidSiswa);
+        if (csvSiswa) {
+          const parsed = parseSiswaCSV(csvSiswa);
+          if (parsed.length > 0) {
+            setStudents(prev => {
+              if (JSON.stringify(prev) !== JSON.stringify(parsed)) {
+                addSyncLog(`Data siswa disinkronkan dari Google Sheets (${parsed.length} siswa).`, 'success');
+                return parsed;
+              }
+              return prev;
+            });
           }
         }
 
@@ -368,10 +406,13 @@ export default function App() {
     };
   }, [syncFromSheets]);
 
-  // LOGIN PROCESSOR
-  const handleLogin = (u: string, p: string): boolean => {
-    // 1. Check user accounts
-    const userFound = users.find(x => x.username.toLowerCase() === u.toLowerCase() && x.password === p);
+  // LOGIN PROCESSOR (Admin, Petugas, & Siswa via Google Spreadsheet gid=1709630193)
+  const handleLogin = async (u: string, p: string): Promise<boolean> => {
+    const cleanU = u.trim().toLowerCase();
+    const cleanP = p.trim();
+
+    // 1. Check user accounts (Admin & Petugas)
+    const userFound = users.find(x => x.username.toLowerCase() === cleanU && x.password === cleanP);
     if (userFound) {
       setCurrentUser({
         nama: userFound.nama,
@@ -385,8 +426,29 @@ export default function App() {
       return true;
     }
 
-    // 2. Check student accounts
-    const studentFound = students.find(s => s.username.toLowerCase() === u.toLowerCase() && s.password === p);
+    // 2. Check student accounts from memory
+    let studentFound = students.find(s => s.username.toLowerCase() === cleanU && s.password === cleanP);
+
+    // 3. Realtime query to Google Spreadsheet gid=1709630193 if not found locally
+    if (!studentFound) {
+      try {
+        const spreadsheetId = settings.spreadsheetId || MASTER_SPREADSHEET_ID;
+        const gidSiswa = settings.sheetGidSiswa || MASTER_GID_SISWA; // 1709630193
+        const csvText = await fetchCsvFromGoogleSheet(spreadsheetId, gidSiswa);
+        if (csvText) {
+          const freshStudents = parseSiswaCSV(csvText);
+          if (freshStudents.length > 0) {
+            setStudents(freshStudents);
+            studentFound = freshStudents.find(
+              s => s.username.toLowerCase() === cleanU && s.password === cleanP
+            );
+          }
+        }
+      } catch (err) {
+        console.warn('Realtime fetch student login error:', err);
+      }
+    }
+
     if (studentFound) {
       setCurrentUser({
         nama: studentFound.nama,
@@ -411,8 +473,9 @@ export default function App() {
       isDestructive: false,
       onConfirm: () => {
         setCurrentUser(null);
+        setLoginModalKey(k => k + 1);
         setIsLoginOpen(true);
-        showToast('Anda telah berhasil keluar.', 'success');
+        showToast('Anda telah berhasil keluar. Formulir login telah dikosongkan.', 'success');
       }
     });
   };
@@ -839,6 +902,18 @@ export default function App() {
                 onDeletePresensi={handleDeletePresensi}
                 onPrintPdf={handlePrintPdf}
                 onDownloadCsv={handleDownloadPresenceCsv}
+                onShowDuplicateWarning={p => {
+                  setAlreadyPresentData({
+                    nama: p.nama,
+                    nis: p.nis,
+                    tanggal: p.tanggal,
+                    waktu: p.waktu,
+                    status: p.status,
+                    metode: p.metode || 'Kamera Scanner Barcode',
+                    attemptedMethod: 'Pengecekan Rekap Presensi'
+                  });
+                  playWarningSound();
+                }}
               />
             )}
 
@@ -869,10 +944,21 @@ export default function App() {
                   usersCount: users.length
                 }}
                 syncLogs={syncLogs}
-                onSaveSettings={newSettings => {
-                  setSettings(newSettings);
-                  showToast('Konfigurasi berhasil disimpan dan TERKUNCI secara aman!', 'success');
-                  addSyncLog('Konfigurasi Sheet GID disimpan & dikunci.', 'success');
+                onSaveSettings={async newSettings => {
+                  const locked = { ...newSettings, isConfigLocked: true };
+                  setSettings(locked);
+                  localStorage.setItem(SETTINGS_KEY, JSON.stringify(locked));
+                  try {
+                    await fetch('/api/settings', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify(locked)
+                    });
+                  } catch (e) {
+                    console.warn('Sync settings error:', e);
+                  }
+                  showToast('Konfigurasi berhasil disimpan dan TERKUNCI di semua perangkat!', 'success');
+                  addSyncLog('Konfigurasi Sheet GID disimpan & dikunci secara permanen di semua perangkat.', 'success');
                   syncFromSheets(true);
                 }}
                 onTestConnection={() => {
@@ -887,7 +973,7 @@ export default function App() {
       </main>
 
       {/* MODALS */}
-      <LoginModal isOpen={isLoginOpen} onLogin={handleLogin} />
+      <LoginModal key={loginModalKey} isOpen={isLoginOpen} onLogin={handleLogin} />
 
       <SuccessPresenceModal
         data={successPresenceData}

@@ -328,23 +328,48 @@ export function parseUsersCSV(csvText: string): UserAccount[] {
 
 export async function fetchCsvFromGoogleSheet(spreadsheetId: string, gidOrSheetName: string): Promise<string | null> {
   if (!spreadsheetId) return null;
-  const isGid = /^\d+$/.test(gidOrSheetName.trim());
-  const param = isGid ? `gid=${gidOrSheetName.trim()}` : `sheet=${encodeURIComponent(gidOrSheetName.trim())}`;
+  const cleanGid = gidOrSheetName.trim();
+  const isGid = /^\d+$/.test(cleanGid);
+  const param = isGid ? `gid=${cleanGid}` : `sheet=${encodeURIComponent(cleanGid)}`;
   const url = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?tqx=out:csv&${param}&_t=${Date.now()}`;
 
   try {
     const res = await fetch(url, { cache: 'no-store' });
-    if (!res.ok) return null;
-    const text = await res.text();
-    return text;
+    if (res.ok) {
+      const text = await res.text();
+      if (text && text.length > 5) return text;
+    }
   } catch (err) {
-    console.warn(`Fetch CSV (${gidOrSheetName}) error:`, err);
-    return null;
+    console.warn(`Direct fetch CSV (${cleanGid}) failed, trying server proxy:`, err);
   }
+
+  // Fallback to server endpoint proxy
+  try {
+    const proxyUrl = `/api/sheets/siswa?spreadsheetId=${encodeURIComponent(spreadsheetId)}&gid=${encodeURIComponent(cleanGid)}`;
+    const proxyRes = await fetch(proxyUrl);
+    if (proxyRes.ok) {
+      const proxyText = await proxyRes.text();
+      if (proxyText && proxyText.length > 5) return proxyText;
+    }
+  } catch (proxyErr) {
+    console.warn('Proxy fetch CSV error:', proxyErr);
+  }
+
+  return null;
 }
 
 export async function sendPayloadToGoogleAppsScript(apiUrl: string, payload: Record<string, unknown>): Promise<boolean> {
+  // Always send to server proxy so it is logged and persistent
+  try {
+    fetch('/api/sync-proxy', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ apiUrl, payload })
+    }).catch(() => {});
+  } catch {}
+
   if (!apiUrl || apiUrl.includes('YourDeploymentId')) return false;
+
   try {
     await fetch(apiUrl, {
       method: 'POST',

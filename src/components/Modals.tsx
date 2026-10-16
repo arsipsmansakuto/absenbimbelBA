@@ -32,22 +32,40 @@ import { APPS_SCRIPT_CODE_TEMPLATE, parseSiswaCSV } from '../utils/sheetsSync';
 /* 1. LOGIN MODAL */
 interface LoginModalProps {
   isOpen: boolean;
-  onLogin: (u: string, p: string) => boolean;
+  onLogin: (u: string, p: string) => boolean | Promise<boolean>;
 }
 
 export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onLogin }) => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+
+  // Otomatis kosongkan username dan password saat modal login dibuka atau setelah logout
+  useEffect(() => {
+    if (isOpen) {
+      setUsername('');
+      setPassword('');
+      setErrorMsg('');
+      setIsLoading(false);
+    }
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg('');
-    const success = onLogin(username.trim(), password.trim());
-    if (!success) {
-      setErrorMsg('Username atau password salah!');
+    setIsLoading(true);
+    try {
+      const success = await onLogin(username.trim(), password.trim());
+      if (!success) {
+        setErrorMsg('Username atau password salah! Pastikan akun terdaftar di Google Spreadsheet.');
+      }
+    } catch {
+      setErrorMsg('Terjadi kesalahan saat memverifikasi akun.');
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -99,9 +117,19 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onLogin }) => {
 
           <button
             type="submit"
-            className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-md transition cursor-pointer"
+            disabled={isLoading}
+            className={`w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-md transition cursor-pointer flex items-center justify-center gap-2 ${
+              isLoading ? 'opacity-75 cursor-wait' : ''
+            }`}
           >
-            Masuk Sekarang
+            {isLoading ? (
+              <>
+                <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                <span>Memverifikasi Akun...</span>
+              </>
+            ) : (
+              <span>Masuk Sekarang</span>
+            )}
           </button>
         </form>
       </div>
@@ -190,63 +218,73 @@ export const AlreadyPresentModal: React.FC<AlreadyPresentModalProps> = ({ data, 
   if (!data) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
-      <div className="bg-white rounded-3xl shadow-2xl max-w-sm w-full p-6 text-center space-y-4 border-2 border-rose-500">
-        <div className="w-16 h-16 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center text-3xl mx-auto ring-8 ring-rose-50">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 backdrop-blur-sm p-4">
+      <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full p-6 text-center space-y-4 border-2 border-rose-500 animate-in fade-in zoom-in-95 duration-150">
+        <div className="w-16 h-16 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center text-3xl mx-auto ring-8 ring-rose-50 shadow-inner">
           <AlertTriangle className="w-9 h-9" />
         </div>
         <div>
-          <span className="inline-block px-3 py-1 bg-rose-100 text-rose-800 text-xs font-extrabold rounded-full uppercase tracking-wider mb-1">
-            SUDAH PRESENSI HARI INI (MAKS. 1X)
+          <span className="inline-block px-3 py-1 bg-rose-100 text-rose-800 text-xs font-black rounded-full uppercase tracking-wider mb-1.5 border border-rose-200">
+            PERINGATAN: PRESENSI GANDA DITOLAK
           </span>
-          <h3 className="text-lg font-black text-slate-800 font-brand">Anda Sudah Presensi Hari Ini</h3>
+          <h3 className="text-lg font-black text-slate-800 font-brand">
+            Siswa Sudah Melakukan Presensi
+          </h3>
           <p className="text-xs text-rose-600 font-medium">
-            Dalam 1 hari siswa hanya dapat presensi 1 kali.
+            Siswa dengan nama dan tanggal yang sama tidak dapat presensi lebih dari 1 kali.
           </p>
         </div>
 
-        <div className="bg-rose-50 border border-rose-100 rounded-2xl p-4 text-left text-xs space-y-1.5">
-          <div className="flex justify-between">
-            <span className="text-slate-500">Nama Siswa:</span>
-            <span className="font-bold text-rose-950">{data.nama}</span>
+        <div className="bg-rose-50/80 border border-rose-200 rounded-2xl p-4 text-left text-xs space-y-2">
+          <div className="flex justify-between border-b border-rose-100 pb-1.5">
+            <span className="text-slate-500 font-medium">Nama Siswa:</span>
+            <span className="font-extrabold text-rose-950 text-sm">{data.nama}</span>
           </div>
           {data.nis && (
             <div className="flex justify-between">
-              <span className="text-slate-500">Username/NIS:</span>
+              <span className="text-slate-500">Username / NIS:</span>
               <span className="font-mono font-bold text-slate-700">{data.nis}</span>
             </div>
           )}
           <div className="flex justify-between">
-            <span className="text-slate-500">Tanggal:</span>
+            <span className="text-slate-500">Tanggal Presensi:</span>
             <span className="font-bold text-slate-800">{formatTanggalIndo(data.tanggal)}</span>
           </div>
           <div className="flex justify-between">
-            <span className="text-slate-500">Tercatat Pada:</span>
+            <span className="text-slate-500">Waktu Tercatat:</span>
             <span className="font-bold text-rose-700">{data.waktu} WIB ({data.status})</span>
           </div>
           <div className="flex justify-between">
             <span className="text-slate-500">Metode Presensi Awal:</span>
-            <span className="font-semibold text-indigo-900">
+            <span className="font-bold text-indigo-900 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200">
               {data.metode || 'Kamera Scanner Barcode'}
             </span>
           </div>
           {data.attemptedMethod && (
-            <div className="flex justify-between text-rose-800 border-t border-rose-200/60 pt-1 mt-1">
+            <div className="flex justify-between text-rose-800 border-t border-rose-200/80 pt-1.5 mt-1 font-semibold">
               <span>Percobaan Melalui:</span>
-              <span className="font-bold">{data.attemptedMethod} (Ditolak)</span>
+              <span className="font-extrabold text-rose-700">{data.attemptedMethod} (Ditolak)</span>
             </div>
           )}
         </div>
 
-        <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-xl text-[11px] text-amber-900 text-left leading-relaxed">
-          <b>Aturan SIM Presensi:</b> Jika sudah presensi melalui Kamera Barcode tidak bisa presensi manual, begitu pula sebaliknya.
+        <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-[11px] text-amber-900 text-left leading-relaxed space-y-1">
+          <div className="font-bold flex items-center gap-1.5 text-amber-950">
+            <span>⚠️ Aturan Presensi SIM BIMBEL BA:</span>
+          </div>
+          <p>
+            1. Dalam <b>1 hari</b>, siswa hanya dapat presensi <b>1 kali</b>.
+          </p>
+          <p>
+            2. Jika sudah presensi menggunakan <b>Kamera Scanner Barcode</b>, maka <b>tidak bisa presensi manual</b>, begitu pula sebaliknya.
+          </p>
         </div>
 
         <button
           onClick={onClose}
           className="w-full py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl shadow-md transition cursor-pointer"
         >
-          Mengerti
+          Tutup & Mengerti
         </button>
       </div>
     </div>
