@@ -43,6 +43,7 @@ export const ScannerTab: React.FC<ScannerTabProps> = ({
   const [cameras, setCameras] = useState<{ id: string; label: string }[]>([]);
   const [selectedCameraId, setSelectedCameraId] = useState<string>('');
   const [scanTanggal, setScanTanggal] = useState<string>(getTodayDdMmYyyy());
+  const [logFilterMode, setLogFilterMode] = useState<'selected' | 'today' | 'all'>('selected');
   const [manualQuery, setManualQuery] = useState<string>('');
   const [manualKeterangan, setManualKeterangan] = useState<string>('');
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
@@ -50,6 +51,12 @@ export const ScannerTab: React.FC<ScannerTabProps> = ({
 
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const lastScannedCodeRef = useRef<{ code: string; time: number }>({ code: '', time: 0 });
+
+  // Ref untuk memastikan callback startScanner selalu memakai scanTanggal terbaru
+  const scanTanggalRef = useRef<string>(scanTanggal);
+  useEffect(() => {
+    scanTanggalRef.current = scanTanggal;
+  }, [scanTanggal]);
 
   // Filter students based on manual input query
   const filteredStudents = manualQuery.trim()
@@ -60,14 +67,30 @@ export const ScannerTab: React.FC<ScannerTabProps> = ({
       )
     : [];
 
-  // Filter today's presence records
   const todayStr = getTodayDdMmYyyy();
-  const todayIso = parseTanggalIndoKeIso(todayStr);
 
-  const todayPresensi = presensiList.filter(p => {
-    const pIso = parseTanggalIndoKeIso(p.tanggal);
-    return (pIso && todayIso && pIso === todayIso) || formatTanggalIndo(p.tanggal) === todayStr;
+  // Presensi yang cocok dengan tanggal presensi yang sedang diatur (scanTanggal)
+  const activeDateNorm = normalizeDateToStandard(scanTanggal || todayStr);
+  const activeDateIso = parseTanggalIndoKeIso(activeDateNorm);
+
+  const recordsOnActiveDate = presensiList.filter(p => {
+    const pNorm = normalizeDateToStandard(p.tanggal);
+    const pIso = parseTanggalIndoKeIso(pNorm);
+    return pNorm === activeDateNorm || (pIso && activeDateIso && pIso === activeDateIso);
   });
+
+  const recordsOnToday = presensiList.filter(p => {
+    const pNorm = normalizeDateToStandard(p.tanggal);
+    return pNorm === todayStr;
+  });
+
+  // Tentukan data log yang ditampilkan sesuai mode filter
+  const displayedLogPresensi =
+    logFilterMode === 'selected'
+      ? recordsOnActiveDate
+      : logFilterMode === 'today'
+      ? recordsOnToday
+      : presensiList.slice(0, 50);
 
   // Load cameras
   useEffect(() => {
@@ -95,17 +118,20 @@ export const ScannerTab: React.FC<ScannerTabProps> = ({
     };
   }, []);
 
-  const getStudentAttendanceToday = (student: Student | null) => {
+  const getStudentAttendanceOnDate = (student: Student | null, tglInput: string) => {
     if (!student) return null;
-    const tglStandard = normalizeDateToStandard(scanTanggal || getTodayDdMmYyyy());
+    const tglStandard = normalizeDateToStandard(tglInput || getTodayDdMmYyyy());
+    const tglIso = parseTanggalIndoKeIso(tglStandard);
     const sNamaNorm = (student.nama || '').trim().toLowerCase().replace(/\s+/g, ' ');
     const sUsername = (student.username || '').trim().toLowerCase();
 
     return presensiList.find(p => {
       const pTglStandard = normalizeDateToStandard(p.tanggal);
+      const pTglIso = parseTanggalIndoKeIso(pTglStandard);
+      const matchTgl = pTglStandard === tglStandard || (pTglIso && tglIso && pTglIso === tglIso);
       const pNamaNorm = (p.nama || '').trim().toLowerCase().replace(/\s+/g, ' ');
       const pNisNorm = (p.nis || '').trim().toLowerCase();
-      return pTglStandard === tglStandard && (pNamaNorm === sNamaNorm || pNisNorm === sUsername);
+      return matchTgl && (pNamaNorm === sNamaNorm || pNisNorm === sUsername);
     });
   };
 
@@ -141,7 +167,8 @@ export const ScannerTab: React.FC<ScannerTabProps> = ({
             return;
           }
           lastScannedCodeRef.current = { code: decodedText, time: now };
-          onProcessPresensi(decodedText, undefined, undefined, 'Kamera Scanner Barcode');
+          // Menggunakan scanTanggalRef.current agar tanggal presensi sesuai dengan Tanggal Presensi (dd/mm/yyyy) yang diatur!
+          onProcessPresensi(decodedText, scanTanggalRef.current, undefined, 'Kamera Scanner Barcode');
         },
         () => {}
       );
@@ -194,6 +221,60 @@ export const ScannerTab: React.FC<ScannerTabProps> = ({
 
   return (
     <div className="space-y-6">
+      {/* PENGATURAN TANGGAL PRESENSI BERSAMA (UNTUK SCANNER BARCODE & PRESENSI MANUAL) */}
+      <div className="bg-gradient-to-r from-indigo-950 via-indigo-900 to-indigo-950 text-white rounded-2xl p-4 sm:p-5 shadow-sm border border-indigo-800">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              <div className="w-8 h-8 rounded-xl bg-amber-400 text-indigo-950 flex items-center justify-center font-bold shadow-sm">
+                <Calendar className="w-4 h-4" />
+              </div>
+              <h2 className="text-sm sm:text-base font-bold font-brand tracking-wide text-white">
+                Pengaturan Tanggal Presensi (Barcode & Manual)
+              </h2>
+              <span className="text-[10px] bg-emerald-500/20 text-emerald-300 font-bold px-2 py-0.5 rounded-full border border-emerald-400/30">
+                Aktif: {scanTanggal}
+              </span>
+            </div>
+            <p className="text-xs text-indigo-200 leading-relaxed max-w-2xl">
+              Tanggal Presensi <b>(dd/mm/yyyy)</b> di bawah mengatur tanggal untuk <b>Kamera Scanner Barcode</b> dan <b>Presensi Manual</b>. Data presensi akan langsung tercatat di log terbaru hari ini, masuk di tab <b>Rekap Kehadiran (12x)</b>, dan dikirim ke <b>Google Spreadsheet</b>.
+            </p>
+          </div>
+
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2.5">
+            <div className="relative flex items-center">
+              <input
+                type="text"
+                value={scanTanggal}
+                onChange={e => setScanTanggal(e.target.value)}
+                className="bg-white/10 hover:bg-white/15 focus:bg-white text-white focus:text-slate-900 border border-indigo-400/40 focus:border-white rounded-xl pl-3.5 pr-10 py-2.5 text-xs font-bold font-mono tracking-wide focus:outline-none focus:ring-2 focus:ring-amber-400 transition w-full sm:w-44"
+                placeholder="dd/mm/yyyy"
+              />
+              <input
+                type="date"
+                value={parseTanggalIndoKeIso(scanTanggal)}
+                onChange={e => {
+                  if (e.target.value) {
+                    setScanTanggal(parseIsoKeTanggalIndo(e.target.value));
+                  }
+                }}
+                className="absolute right-2 opacity-0 w-8 h-8 cursor-pointer z-10"
+                title="Pilih tanggal di kalender"
+              />
+              <Calendar className="w-4 h-4 absolute right-3 text-indigo-200 pointer-events-none" />
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setScanTanggal(todayStr)}
+              className="px-3 py-2.5 bg-amber-400 hover:bg-amber-300 text-indigo-950 text-xs font-extrabold rounded-xl transition cursor-pointer shadow-sm flex items-center justify-center gap-1.5 whitespace-nowrap"
+            >
+              <span>Setel Hari Ini</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         {/* SCANNER KAMERA BARCODE */}
         <div className="lg:col-span-7 bg-white rounded-2xl shadow-sm border border-slate-200 p-5 space-y-4">
@@ -365,7 +446,7 @@ export const ScannerTab: React.FC<ScannerTabProps> = ({
                     <div className="p-3 text-xs text-slate-400 text-center">Siswa tidak ditemukan</div>
                   ) : (
                     filteredStudents.slice(0, 7).map(s => {
-                      const attended = getStudentAttendanceToday(s);
+                      const attended = getStudentAttendanceOnDate(s, scanTanggal);
                       return (
                         <div
                           key={s.username}
@@ -397,7 +478,7 @@ export const ScannerTab: React.FC<ScannerTabProps> = ({
                 </div>
               )}
 
-              {/* Status Peringatan Jika Siswa Terpilih Sudah Presensi Hari Ini */}
+              {/* Status Peringatan Jika Siswa Terpilih Sudah Presensi Pada Tanggal Ini */}
               {selectedStudent && (
                 <div className="mt-2 space-y-2">
                   <div className="p-2.5 bg-indigo-50 border border-indigo-200 rounded-xl flex items-center justify-between text-xs">
@@ -417,15 +498,17 @@ export const ScannerTab: React.FC<ScannerTabProps> = ({
                   </div>
 
                   {(() => {
-                    const attendedRecord = getStudentAttendanceToday(selectedStudent);
+                    const attendedRecord = getStudentAttendanceOnDate(selectedStudent, scanTanggal);
                     if (attendedRecord) {
                       return (
                         <div className="p-2.5 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800 flex items-start gap-2">
                           <AlertTriangle className="w-4 h-4 text-rose-600 flex-shrink-0 mt-0.5" />
                           <div className="leading-tight">
-                            <div className="font-bold text-rose-950">Siswa Sudah Presensi Hari Ini!</div>
+                            <div className="font-bold text-rose-950">
+                              Siswa Sudah Presensi Pada Tanggal Ini ({scanTanggal})!
+                            </div>
                             <div className="text-[11px] text-rose-700 mt-0.5">
-                              Tercatat pada {attendedRecord.waktu} WIB via <b>{attendedRecord.metode || 'Kamera Scanner Barcode'}</b>. Siswa hanya dapat absen 1x sehari.
+                              Tercatat pada {attendedRecord.waktu} WIB via <b>{attendedRecord.metode || 'Kamera Scanner Barcode'}</b>. Siswa hanya dapat absen 1x per hari.
                             </div>
                           </div>
                         </div>
@@ -468,25 +551,69 @@ export const ScannerTab: React.FC<ScannerTabProps> = ({
               className="w-full py-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold text-xs rounded-xl shadow-md transition flex items-center justify-center gap-2 cursor-pointer"
             >
               <CheckCircle2 className="w-4 h-4" />
-              <span>Submit Presensi</span>
+              <span>Submit Presensi ({scanTanggal})</span>
             </button>
           </form>
         </div>
       </div>
 
-      {/* TABEL LOG PRESENSI TERBARU HARI INI */}
+      {/* TABEL LOG PRESENSI TERBARU HARI INI SESUAI TANGGAL PRESENSI */}
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
           <div className="flex items-center gap-2">
             <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-            <h3 className="text-sm font-bold text-slate-800 font-brand">Log Presensi Terbaru Hari Ini</h3>
+            <h3 className="text-sm font-bold text-slate-800 font-brand">
+              {scanTanggal === todayStr
+                ? `Log Presensi Terbaru Hari Ini (${scanTanggal})`
+                : `Log Presensi Terbaru - Tanggal Presensi: ${scanTanggal}`}
+            </h3>
           </div>
-          <div className="text-xs text-slate-500 font-medium">
-            Total Tercatat Hari Ini:{' '}
-            <span className="font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-200">
-              {todayPresensi.length}
-            </span>{' '}
-            Siswa
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex items-center p-1 bg-slate-100 rounded-xl text-[11px] font-semibold">
+              <button
+                type="button"
+                onClick={() => setLogFilterMode('selected')}
+                className={`px-2.5 py-1 rounded-lg transition cursor-pointer ${
+                  logFilterMode === 'selected'
+                    ? 'bg-indigo-600 text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                Tgl Terpilih ({recordsOnActiveDate.length})
+              </button>
+              {scanTanggal !== todayStr && (
+                <button
+                  type="button"
+                  onClick={() => setLogFilterMode('today')}
+                  className={`px-2.5 py-1 rounded-lg transition cursor-pointer ${
+                    logFilterMode === 'today'
+                      ? 'bg-indigo-600 text-white shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  Hari Ini ({recordsOnToday.length})
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setLogFilterMode('all')}
+                className={`px-2.5 py-1 rounded-lg transition cursor-pointer ${
+                  logFilterMode === 'all'
+                    ? 'bg-indigo-600 text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                Semua Log ({presensiList.length})
+              </button>
+            </div>
+
+            <div className="text-xs text-slate-500 font-medium">
+              Total Tercatat:{' '}
+              <span className="font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-200">
+                {displayedLogPresensi.length}
+              </span>{' '}
+              Siswa
+            </div>
           </div>
         </div>
 
@@ -495,7 +622,7 @@ export const ScannerTab: React.FC<ScannerTabProps> = ({
             <thead className="bg-slate-50 text-slate-600 font-semibold uppercase text-[10px]">
               <tr>
                 <th className="py-2.5 px-3">Waktu</th>
-                <th className="py-2.5 px-3">Tanggal</th>
+                <th className="py-2.5 px-3">Tanggal Presensi</th>
                 <th className="py-2.5 px-3">Username / ID</th>
                 <th className="py-2.5 px-3">Nama Siswa</th>
                 <th className="py-2.5 px-3">Kelas</th>
@@ -505,14 +632,14 @@ export const ScannerTab: React.FC<ScannerTabProps> = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {todayPresensi.length === 0 ? (
+              {displayedLogPresensi.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="py-8 text-center text-slate-400">
-                    Belum ada presensi yang tercatat hari ini ({todayStr}).
+                    Belum ada presensi yang tercatat untuk tanggal {scanTanggal}. Silakan scan barcode atau submit presensi manual di atas.
                   </td>
                 </tr>
               ) : (
-                todayPresensi.map(p => {
+                displayedLogPresensi.map(p => {
                   const isManual = p.metode === 'Presensi Manual' || p.metode === 'Manual';
                   return (
                     <tr key={p.id} className="hover:bg-slate-50 transition">
@@ -520,7 +647,9 @@ export const ScannerTab: React.FC<ScannerTabProps> = ({
                         <Clock className="w-3 h-3 text-slate-400" />
                         <span>{p.waktu}</span>
                       </td>
-                      <td className="py-2.5 px-3 font-semibold text-slate-800">{formatTanggalIndo(p.tanggal)}</td>
+                      <td className="py-2.5 px-3 font-semibold text-slate-800">
+                        {formatTanggalIndo(p.tanggal)}
+                      </td>
                       <td className="py-2.5 px-3 font-mono text-slate-500">{p.nis}</td>
                       <td className="py-2.5 px-3 font-bold text-slate-800">{p.nama}</td>
                       <td className="py-2.5 px-3 text-slate-600">{p.kelas || '-'}</td>

@@ -11,7 +11,15 @@ import {
   CheckCircle2
 } from 'lucide-react';
 import { Student, SppRecord, CurrentUserSession } from '../types';
-import { getTodayDdMmYyyy, formatTanggalIndo, formatRupiah, parseNominalAngka } from '../utils/helpers';
+import {
+  getTodayDdMmYyyy,
+  formatTanggalIndo,
+  formatRupiah,
+  parseNominalAngka,
+  normalizeDateToStandard,
+  parseTanggalIndoKeIso,
+  parseIsoKeTanggalIndo
+} from '../utils/helpers';
 
 interface SppTabProps {
   students: Student[];
@@ -75,9 +83,12 @@ export const SppTab: React.FC<SppTabProps> = ({
       '0'
     )}${String(now.getSeconds()).padStart(2, '0')}`;
 
+    // Pastikan tanggal bayar sesuai dengan inputan pengguna Tanggal Bayar (dd/mm/yyyy)
+    const tglBayar = normalizeDateToStandard(sppTanggal.trim() || getTodayDdMmYyyy());
+
     const newRecord: SppRecord = {
       id: `SPP-${stamp}`,
-      tanggal: formatTanggalIndo(sppTanggal),
+      tanggal: tglBayar,
       nis: selectedStudent.username,
       nama: selectedStudent.nama,
       kelas: selectedStudent.kelas || '-',
@@ -108,21 +119,44 @@ export const SppTab: React.FC<SppTabProps> = ({
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
-            {/* Tanggal Bayar */}
+            {/* Tanggal Bayar (dd/mm/yyyy) */}
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">
-                Tanggal Bayar (dd/mm/yyyy)
-              </label>
-              <div className="relative">
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-xs font-semibold text-slate-700">
+                  Tanggal Bayar (dd/mm/yyyy)
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setSppTanggal(getTodayDdMmYyyy())}
+                  className="text-[10px] text-amber-700 hover:text-amber-800 font-bold bg-amber-50 hover:bg-amber-100 px-2 py-0.5 rounded border border-amber-200 transition cursor-pointer"
+                >
+                  Setel Hari Ini
+                </button>
+              </div>
+              <div className="relative flex items-center">
                 <input
                   type="text"
                   value={sppTanggal}
                   onChange={e => setSppTanggal(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl pl-3.5 pr-10 py-2.5 text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500"
                   placeholder="dd/mm/yyyy"
                 />
-                <Calendar className="w-4 h-4 absolute right-3.5 top-3 text-slate-400 pointer-events-none" />
+                <input
+                  type="date"
+                  value={parseTanggalIndoKeIso(sppTanggal)}
+                  onChange={e => {
+                    if (e.target.value) {
+                      setSppTanggal(parseIsoKeTanggalIndo(e.target.value));
+                    }
+                  }}
+                  className="absolute right-2 opacity-0 w-8 h-8 cursor-pointer z-10"
+                  title="Pilih tanggal di kalender"
+                />
+                <Calendar className="w-4 h-4 absolute right-3.5 text-slate-400 pointer-events-none" />
               </div>
+              <p className="text-[10px] text-slate-500 mt-1">
+                Tanggal bayar disimpan persis sesuai inputan (contoh: 16/10/2026) dan disinkronkan ke Google Sheets.
+              </p>
             </div>
 
             {/* Nama Siswa Autocomplete */}

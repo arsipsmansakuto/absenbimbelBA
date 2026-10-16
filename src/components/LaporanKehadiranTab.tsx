@@ -12,7 +12,10 @@ import {
   PenSquare,
   Trash2,
   Calendar,
-  AlertTriangle
+  AlertTriangle,
+  CheckCircle2,
+  Sparkles,
+  Layers
 } from 'lucide-react';
 import { Student, PresensiRecord } from '../types';
 import {
@@ -41,6 +44,7 @@ export const LaporanKehadiranTab: React.FC<LaporanKehadiranTabProps> = ({
   onDownloadCsv,
   onShowDuplicateWarning
 }) => {
+  const [activeView, setActiveView] = useState<'table' | 'matrix12x'>('table');
   const [filterName, setFilterName] = useState('');
   const [filterBulan, setFilterBulan] = useState('');
   const [filterTahun, setFilterTahun] = useState('');
@@ -148,6 +152,49 @@ export const LaporanKehadiranTab: React.FC<LaporanKehadiranTabProps> = ({
   const totalHadir = sortedData.filter(d => d.status === 'Hadir').length;
   const paketSelesai = Math.floor(totalHadir / 12);
   const sesiSisa = totalHadir % 12;
+
+  // Hitung matriks 12 pertemuan per siswa
+  const students12x = students
+    .filter(s => {
+      if (!filterName.trim()) return true;
+      const q = filterName.toLowerCase().trim();
+      return (
+        (s.nama && s.nama.toLowerCase().includes(q)) ||
+        (s.username && s.username.toLowerCase().includes(q))
+      );
+    })
+    .map(s => {
+      const sUsername = (s.username || '').trim().toLowerCase();
+      const sNamaNorm = (s.nama || '').trim().toLowerCase().replace(/\s+/g, ' ');
+
+      const attendedRecords = presensiList
+        .filter(p => {
+          const pNamaNorm = (p.nama || '').trim().toLowerCase().replace(/\s+/g, ' ');
+          const pNisNorm = (p.nis || '').trim().toLowerCase();
+          return (pNamaNorm === sNamaNorm || pNisNorm === sUsername) && p.status === 'Hadir';
+        })
+        .sort((a, b) => {
+          const isoA = parseTanggalIndoKeIso(normalizeDateToStandard(a.tanggal));
+          const isoB = parseTanggalIndoKeIso(normalizeDateToStandard(b.tanggal));
+          return isoA.localeCompare(isoB);
+        });
+
+      const studentTotalHadir = attendedRecords.length;
+      const paketCount = Math.floor(studentTotalHadir / 12);
+      const sesiAktif = studentTotalHadir % 12;
+
+      // 12 slot pertemuan untuk siklus paket saat ini
+      const cycleStart = studentTotalHadir > 0 && sesiAktif === 0 ? (paketCount - 1) * 12 : paketCount * 12;
+      const cycleRecords = attendedRecords.slice(cycleStart, cycleStart + 12);
+
+      return {
+        student: s,
+        totalHadir: studentTotalHadir,
+        paketCount,
+        sesiAktif: studentTotalHadir > 0 && sesiAktif === 0 ? 12 : sesiAktif,
+        cycleRecords
+      };
+    });
 
   // Filter ke tanggal spesifik dari rekap tanggal
   const handleFilterToDate = (tgl: string) => {
@@ -428,94 +475,260 @@ export const LaporanKehadiranTab: React.FC<LaporanKehadiranTabProps> = ({
           </div>
         </div>
 
-        {/* TABEL REKAP KEHADIRAN (DENGAN AKSI EDIT & HAPUS & PERINGATAN DUPLIKAT) */}
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs text-slate-700 divide-y divide-slate-200">
-            <thead className="bg-slate-50 text-slate-600 font-semibold uppercase text-[10px]">
-              <tr>
-                <th className="py-2.5 px-3">No</th>
-                <th className="py-2.5 px-3">Tanggal</th>
-                <th className="py-2.5 px-3">Waktu</th>
-                <th className="py-2.5 px-3">Username / ID</th>
-                <th className="py-2.5 px-3">Nama Siswa</th>
-                <th className="py-2.5 px-3">Kelas</th>
-                <th className="py-2.5 px-3">Status</th>
-                <th className="py-2.5 px-3">Keterangan / Paket</th>
-                <th className="py-2.5 px-3 text-center">Aksi</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {sortedData.length === 0 ? (
-                <tr>
-                  <td colSpan={9} className="py-8 text-center text-slate-400">
-                    Tidak ada data kehadiran yang sesuai filter.
-                  </td>
-                </tr>
-              ) : (
-                sortedData.map((p, idx) => {
-                  let badgeClass = 'bg-emerald-100 text-emerald-800';
-                  if (p.status === 'Izin') badgeClass = 'bg-amber-100 text-amber-800';
-                  else if (p.status === 'Sakit') badgeClass = 'bg-sky-100 text-sky-800';
-                  else if (p.status === 'Alpa') badgeClass = 'bg-rose-100 text-rose-800';
-
-                  const hasDuplicate = isDuplicateRecord(p);
-
-                  return (
-                    <tr key={p.id} className={`transition ${hasDuplicate ? 'bg-rose-50/40 hover:bg-rose-50/70' : 'hover:bg-slate-50'}`}>
-                      <td className="py-2.5 px-3 text-slate-400">{idx + 1}</td>
-                      <td className="py-2.5 px-3 font-semibold text-slate-800">
-                        {formatTanggalIndo(p.tanggal)}
-                      </td>
-                      <td className="py-2.5 px-3 font-mono text-slate-600">{p.waktu}</td>
-                      <td className="py-2.5 px-3 font-mono text-slate-500">{p.nis}</td>
-                      <td className="py-2.5 px-3">
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="font-bold text-slate-800">{p.nama}</span>
-                          {hasDuplicate && (
-                            <button
-                              type="button"
-                              onClick={() => onShowDuplicateWarning?.(p)}
-                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-rose-100 hover:bg-rose-200 text-rose-800 border border-rose-300 transition cursor-pointer shadow-xs"
-                              title="Peringatan: Siswa ini presensi lebih dari 1x pada tanggal yang sama. Klik untuk kotak dialog peringatan."
-                            >
-                              <AlertTriangle className="w-3 h-3 text-rose-600" />
-                              <span>Duplikat Tanggal Ini</span>
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                      <td className="py-2.5 px-3 text-slate-600">{p.kelas || '-'}</td>
-                      <td className="py-2.5 px-3">
-                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${badgeClass}`}>
-                          {p.status}
-                        </span>
-                      </td>
-                      <td className="py-2.5 px-3 text-slate-600">{p.keterangan || '-'}</td>
-                      <td className="py-2.5 px-3 text-center">
-                        <div className="flex items-center justify-center gap-1.5">
-                          <button
-                            onClick={() => onOpenEditPresensi(p)}
-                            title="Edit Presensi"
-                            className="p-1.5 text-amber-600 hover:bg-amber-50 rounded-lg transition cursor-pointer"
-                          >
-                            <PenSquare className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => onDeletePresensi(p.id)}
-                            title="Hapus Presensi"
-                            className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
+        {/* VIEW SWITCHER TABS: LOG TRANSAKSI VS MATRIKS 12X */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 pb-3 pt-1">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setActiveView('table')}
+              className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer shadow-xs ${
+                activeView === 'table'
+                  ? 'bg-indigo-600 text-white shadow-sm'
+                  : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+              }`}
+            >
+              <ClipboardList className="w-3.5 h-3.5" />
+              <span>Log Transaksi Presensi ({sortedData.length})</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveView('matrix12x')}
+              className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer shadow-xs ${
+                activeView === 'matrix12x'
+                  ? 'bg-indigo-600 text-white shadow-sm'
+                  : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+              }`}
+            >
+              <Award className="w-3.5 h-3.5 text-amber-400" />
+              <span>Matriks Kehadiran Siswa (12 Pertemuan / Paket)</span>
+            </button>
+          </div>
+          <span className="text-[11px] text-slate-500 font-medium">
+            {activeView === 'table'
+              ? 'Menampilkan log detail per presensi'
+              : `Menampilkan kemajuan 12 pertemuan untuk ${students12x.length} siswa`}
+          </span>
         </div>
+
+        {/* 1. VIEW LOG TRANSAKSI PRESENSI */}
+        {activeView === 'table' && (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs text-slate-700 divide-y divide-slate-200">
+              <thead className="bg-slate-50 text-slate-600 font-semibold uppercase text-[10px]">
+                <tr>
+                  <th className="py-2.5 px-3">No</th>
+                  <th className="py-2.5 px-3">Tanggal Presensi</th>
+                  <th className="py-2.5 px-3">Waktu</th>
+                  <th className="py-2.5 px-3">Username / ID</th>
+                  <th className="py-2.5 px-3">Nama Siswa</th>
+                  <th className="py-2.5 px-3">Kelas</th>
+                  <th className="py-2.5 px-3">Metode</th>
+                  <th className="py-2.5 px-3">Status</th>
+                  <th className="py-2.5 px-3">Keterangan / Paket</th>
+                  <th className="py-2.5 px-3 text-center">Aksi</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {sortedData.length === 0 ? (
+                  <tr>
+                    <td colSpan={10} className="py-8 text-center text-slate-400">
+                      Tidak ada data kehadiran yang sesuai filter.
+                    </td>
+                  </tr>
+                ) : (
+                  sortedData.map((p, idx) => {
+                    let badgeClass = 'bg-emerald-100 text-emerald-800';
+                    if (p.status === 'Izin') badgeClass = 'bg-amber-100 text-amber-800';
+                    else if (p.status === 'Sakit') badgeClass = 'bg-sky-100 text-sky-800';
+                    else if (p.status === 'Alpa') badgeClass = 'bg-rose-100 text-rose-800';
+
+                    const hasDuplicate = isDuplicateRecord(p);
+                    const isManual = p.metode === 'Presensi Manual' || p.metode === 'Manual';
+
+                    return (
+                      <tr
+                        key={p.id}
+                        className={`transition ${
+                          hasDuplicate ? 'bg-rose-50/40 hover:bg-rose-50/70' : 'hover:bg-slate-50'
+                        }`}
+                      >
+                        <td className="py-2.5 px-3 text-slate-400">{idx + 1}</td>
+                        <td className="py-2.5 px-3 font-semibold text-slate-800">
+                          {formatTanggalIndo(p.tanggal)}
+                        </td>
+                        <td className="py-2.5 px-3 font-mono text-slate-600">{p.waktu}</td>
+                        <td className="py-2.5 px-3 font-mono text-slate-500">{p.nis}</td>
+                        <td className="py-2.5 px-3">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="font-bold text-slate-800">{p.nama}</span>
+                            {hasDuplicate && (
+                              <button
+                                type="button"
+                                onClick={() => onShowDuplicateWarning?.(p)}
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-rose-100 hover:bg-rose-200 text-rose-800 border border-rose-300 transition cursor-pointer shadow-xs"
+                                title="Peringatan: Siswa ini presensi lebih dari 1x pada tanggal yang sama. Klik untuk kotak dialog peringatan."
+                              >
+                                <AlertTriangle className="w-3 h-3 text-rose-600" />
+                                <span>Duplikat Tanggal Ini</span>
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                        <td className="py-2.5 px-3 text-slate-600">{p.kelas || '-'}</td>
+                        <td className="py-2.5 px-3">
+                          <span
+                            className={`px-2 py-0.5 rounded-md text-[9px] font-bold ${
+                              isManual
+                                ? 'bg-slate-100 text-slate-700 border border-slate-200'
+                                : 'bg-indigo-50 text-indigo-700 border border-indigo-200'
+                            }`}
+                          >
+                            {p.metode || 'Kamera Barcode'}
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-3">
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${badgeClass}`}>
+                            {p.status}
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-3 text-slate-600">{p.keterangan || '-'}</td>
+                        <td className="py-2.5 px-3 text-center">
+                          <div className="flex items-center justify-center gap-1.5">
+                            <button
+                              onClick={() => onOpenEditPresensi(p)}
+                              title="Edit Presensi"
+                              className="p-1.5 text-amber-600 hover:bg-amber-50 rounded-lg transition cursor-pointer"
+                            >
+                              <PenSquare className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => onDeletePresensi(p.id)}
+                              title="Hapus Presensi"
+                              className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* 2. VIEW MATRIKS KEHADIRAN SISWA (12 PERTEMUAN / PAKET) */}
+        {activeView === 'matrix12x' && (
+          <div className="overflow-x-auto space-y-3">
+            <div className="flex items-center justify-between text-xs text-slate-600 bg-amber-50/70 border border-amber-200 rounded-xl p-3">
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-amber-600 flex-shrink-0" />
+                <span>
+                  <b>Matriks Paket 12 Pertemuan:</b> Setiap kotak mewakili 1 pertemuan dalam siklus 12 sesi. Kotak hijau (✓) menunjukkan tanggal kehadiran siswa.
+                </span>
+              </div>
+              <span className="text-[11px] font-bold text-amber-800 hidden md:inline">
+                Siklus 12 Pertemuan = 1 Paket Selesai
+              </span>
+            </div>
+
+            <table className="w-full text-left text-xs text-slate-700 divide-y divide-slate-200">
+              <thead className="bg-slate-50 text-slate-600 font-semibold uppercase text-[10px]">
+                <tr>
+                  <th className="py-2.5 px-3">No</th>
+                  <th className="py-2.5 px-3">Nama Siswa</th>
+                  <th className="py-2.5 px-3">Kelas</th>
+                  <th className="py-2.5 px-3">Status Paket</th>
+                  <th className="py-2.5 px-3 text-center" colSpan={12}>
+                    Progres 12 Pertemuan (Sesi 1 s/d 12)
+                  </th>
+                  <th className="py-2.5 px-3 text-center">Total Hadir</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {students12x.length === 0 ? (
+                  <tr>
+                    <td colSpan={17} className="py-8 text-center text-slate-400">
+                      Tidak ada data siswa yang cocok dengan filter.
+                    </td>
+                  </tr>
+                ) : (
+                  students12x.map((item, idx) => {
+                    const s = item.student;
+                    const isCycleComplete = item.sesiAktif === 12;
+
+                    return (
+                      <tr key={s.username} className="hover:bg-slate-50 transition">
+                        <td className="py-2.5 px-3 text-slate-400">{idx + 1}</td>
+                        <td className="py-2.5 px-3">
+                          <div className="font-bold text-slate-800">{s.nama}</div>
+                          <div className="text-[10px] text-slate-500 font-mono">NIS: {s.username}</div>
+                        </td>
+                        <td className="py-2.5 px-3 text-slate-600">{s.kelas || '-'}</td>
+                        <td className="py-2.5 px-3">
+                          <div className="space-y-0.5">
+                            <span
+                              className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-extrabold ${
+                                item.paketCount > 0
+                                  ? 'bg-amber-100 text-amber-800 border border-amber-300'
+                                  : 'bg-indigo-50 text-indigo-700 border border-indigo-200'
+                              }`}
+                            >
+                              {item.paketCount > 0 ? `Paket ke-${item.paketCount} Selesai` : 'Paket ke-1 Berjalan'}
+                            </span>
+                            <div className="text-[10px] text-slate-500 font-medium">
+                              Sesi: <b className="text-slate-800">{item.sesiAktif}</b>/12 Pertemuan
+                            </div>
+                          </div>
+                        </td>
+
+                        {/* 12 Kotak Sesi Pertemuan */}
+                        {Array.from({ length: 12 }).map((_, slotIdx) => {
+                          const record = item.cycleRecords[slotIdx];
+                          if (record) {
+                            return (
+                              <td key={slotIdx} className="py-2 px-1 text-center">
+                                <div
+                                  className="w-8 h-8 mx-auto rounded-lg bg-emerald-600 text-white flex flex-col items-center justify-center shadow-xs cursor-default"
+                                  title={`Pertemuan ${slotIdx + 1}: ${record.nama} hadir pada ${formatTanggalIndo(
+                                    record.tanggal
+                                  )} (${record.waktu} WIB via ${record.metode || 'Scanner'})`}
+                                >
+                                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-100" />
+                                  <span className="text-[8px] font-bold leading-none mt-0.5">
+                                    {record.tanggal ? record.tanggal.split('/')[0] : slotIdx + 1}
+                                  </span>
+                                </div>
+                              </td>
+                            );
+                          }
+                          return (
+                            <td key={slotIdx} className="py-2 px-1 text-center">
+                              <div
+                                className="w-8 h-8 mx-auto rounded-lg border-2 border-dashed border-slate-200 bg-slate-50/50 text-slate-300 flex items-center justify-center text-[10px] font-bold"
+                                title={`Pertemuan ${slotIdx + 1}: Belum presensi`}
+                              >
+                                {slotIdx + 1}
+                              </div>
+                            </td>
+                          );
+                        })}
+
+                        <td className="py-2.5 px-3 text-center">
+                          <span className="font-extrabold text-indigo-950 bg-indigo-50 border border-indigo-200 px-2.5 py-1 rounded-lg text-xs">
+                            {item.totalHadir}x
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );
